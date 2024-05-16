@@ -1,15 +1,23 @@
 import sys
 import pygame
+import pygame_gui
 import random
 import json
 
 pygame.init()
 
 # Game Setup
-SCREEN_WIDTH = 1000
-SCREEN_HEIGHT = 400
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Jumping Game")
+MIN_SCREEN_WIDTH = 1000
+MIN_SCREEN_HEIGHT = 400
+screen = pygame.display.set_mode((MIN_SCREEN_WIDTH, MIN_SCREEN_HEIGHT), pygame.RESIZABLE)
+pygame.display.set_caption("Geometry Crack")
+
+# Function to toggle fullscreen
+def toggle_fullscreen():
+    if screen.get_flags() & pygame.FULLSCREEN:
+        pygame.display.set_mode((MIN_SCREEN_WIDTH, MIN_SCREEN_HEIGHT), pygame.RESIZABLE)
+    else:
+        pygame.display.set_mode((MIN_SCREEN_WIDTH, MIN_SCREEN_HEIGHT), pygame.FULLSCREEN)
 
 # Background music
 music = pygame.mixer.music.load('song1.mp3')
@@ -42,24 +50,20 @@ normal_width = 40
 normal_height = 40
 duck_width = 40  # Width when ducking
 duck_height = 10  # Height when ducking
-is_left_width = 10
-is_left_height = 40
-is_right_width = 10
-is_right_height = 40
 player_size = (normal_width, normal_height)  # Default player size
 player_x = 50
-player_y = SCREEN_HEIGHT - normal_height  # Ground level
+player_y = MIN_SCREEN_HEIGHT - normal_height  # Ground level
 player_color = (255, 255, 255)  # White
 player_velocity = 0
 jump_force = -15
 gravity = 1
 is_ducking = False  # State to track ducking
-is_left = False  # State to track left movement
-is_right = False  # State to track right movement
 
 # Ground Configuration
 ground_height = 20
-ground_y = SCREEN_HEIGHT - ground_height
+ground_width = MIN_SCREEN_WIDTH  # Set ground width to match screen width
+# Define ground position relative to the screen height
+ground_y = MIN_SCREEN_HEIGHT - ground_height
 ground_color = (0, 0, 255)  # Blue
 
 # Obstacle Configuration
@@ -81,21 +85,20 @@ def set_obstacle_position(obstacle_type):
         return ground_y - OBSTACLE_HEIGHT  # Ground level at start, then moves up if triggered
 
 # Animation Configuration
-animation_speed = 1.5
-animation_trigger_distance = 250  # Distance to trigger "Duck Under" animation
+animation_speed = 1.3
+animation_trigger_distance = 280  # Distance to trigger "Duck Under" animation
 animation_target_y = ground_y - 120  # Final height for duck under
 
 # Reset Function
 def reset_game():
-    global player_x, player_y, player_velocity, player_size, is_ducking, obstacles, is_left, is_right
+    global player_x, player_y, player_velocity, player_size, is_ducking, obstacles
     # Reset player position
     player_x = 50
-    player_y = SCREEN_HEIGHT - normal_height  # Ground level
+    player_y = MIN_SCREEN_HEIGHT - normal_height  # Ground level
     player_velocity = 0
     player_size = (normal_width, normal_height)  # Default size
     is_ducking = False  # Reset ducking state
-    is_left = False  # Reset left state
-    is_right = False  # Reset right state
+
 
     # Reset obstacles
     obstacles = []
@@ -104,7 +107,7 @@ def reset_game():
     if obstacle_type == DUCK_UNDER:
         obstacle_color = DEFAULT_OBSTACLE_COLOR
     new_obstacle = {
-        "x": random.randint(SCREEN_WIDTH, SCREEN_WIDTH + 300),
+        "x": random.randint(MIN_SCREEN_WIDTH, MIN_SCREEN_WIDTH + 300),
         "type": obstacle_type,
         "y": set_obstacle_position(obstacle_type),  # Use defined function
         "color": obstacle_color,
@@ -119,7 +122,7 @@ reset_game()  # Initialize game variables
 overlay_image = pygame.image.load('rührei.png')
 
 # Scale the image to match the screen size
-overlay_image = pygame.transform.scale(overlay_image, (SCREEN_WIDTH, SCREEN_HEIGHT))
+overlay_image = pygame.transform.scale(overlay_image, (MIN_SCREEN_WIDTH, MIN_SCREEN_HEIGHT))
 
 # Font Configuration
 font = pygame.font.Font(None, 36)  # Choose font and size
@@ -139,69 +142,83 @@ QUIT = 3
 
 game_state = MAIN_MENU
 
-start_button_rect = pygame.Rect(350, 200, 300, 50)
-quit_button_rect = pygame.Rect(350, 270, 300, 50)
+# Create UI manager
+ui_manager = pygame_gui.UIManager((MIN_SCREEN_WIDTH, MIN_SCREEN_HEIGHT))
 
+# Create Start Button
+start_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect((350, 200), (300, 50)),
+                                            text='START',
+                                            manager=ui_manager)
+
+# Create Quit Button
+quit_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect((350, 270), (300, 50)),
+                                           text='QUIT',
+                                           manager=ui_manager)
+
+obstacles = []
 # Main Game Loop
 while run:
+    time_delta = clock.tick(60) / 1000.0  # Convert milliseconds to seconds
+
+    # Event handling
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             run = False
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE and not is_paused:
-                # Jump logic
-                if not is_ducking and player_y >= ground_y - normal_height:
-                    player_velocity = jump_force
-            elif event.key == pygame.K_s and not is_paused:
-                # Duck logic
-                if player_y == ground_y - normal_height:
-                    is_ducking = True
-                    player_size = (duck_width, duck_height)
-                    player_y = ground_y - duck_height
-            elif event.key == pygame.K_a and not is_paused:
-                if player_y == ground_y - normal_height:
-                    is_left = True
-                    player_size = (is_left_width, is_left_height)
-                    player_y = ground_y - is_left_height
-            elif event.key == pygame.K_d and not is_paused:
-                if player_y == ground_y - normal_height:
-                    is_right = True
-                    player_x += 30
-                    player_size = (is_right_width, is_right_height)
-                    player_y = ground_y - is_right_height
-            elif event.key == pygame.K_m:
-                # Toggle the flag to show/hide the overlay
-                show_overlay = not show_overlay
-                # Play the "fu_sound" sound effect
-                pygame.mixer.Sound.play(fu_sound)
-            elif event.key == pygame.K_ESCAPE:
-                # Toggle the paused state
+        elif event.type == pygame.VIDEORESIZE:
+            MIN_SCREEN_WIDTH, MIN_SCREEN_HEIGHT = event.w, event.h
+            screen = pygame.display.set_mode((MIN_SCREEN_WIDTH, MIN_SCREEN_HEIGHT), pygame.RESIZABLE)
+            # Update ground width and position
+            ground_width = MIN_SCREEN_WIDTH
+            ground_y = MIN_SCREEN_HEIGHT - ground_height
+        elif event.type == pygame.USEREVENT:
+            if event.user_type == pygame_gui.UI_BUTTON_PRESSED:
+                if event.ui_element == start_button or event.ui_element == quit_button:
+                    start_button.visible = False
+                    quit_button.visible = False
+                if event.ui_element == start_button:
+                    game_state = PLAYING
+                elif event.ui_element == quit_button:
+                    run = False
+        ui_manager.process_events(event)
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE and game_state != MAIN_MENU:
                 is_paused = not is_paused
+            elif event.key == pygame.K_f:
+                toggle_fullscreen()
 
+    # Update game state
+    if game_state == PLAYING and not is_paused:
+        # Handle player input
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_SPACE] and not is_paused:
+            # Jump logic
+            if not is_ducking and player_y >= ground_y - normal_height:
+                player_velocity = jump_force
+        elif keys[pygame.K_s] and not is_paused:
+            # Duck logic    
+            if player_y == ground_y - normal_height:
+                is_ducking = True
+                player_size = (duck_width, duck_height)
+                player_y = ground_y - duck_height
+        elif keys[pygame.K_m]:
+            # Toggle the flag to show/hide the overlay
+            show_overlay = not show_overlay
+            # Play the "fu_sound" sound effect
+            pygame.mixer.Sound.play(fu_sound)
+            pygame.mixer.Sound.set_volume(fu_sound, 1)
+            
         elif event.type == pygame.KEYUP:
-            # Handle key releases for stopping actions
-            if event.key == pygame.K_s and is_ducking:
+            if event.key == pygame.K_s:
                 is_ducking = False
                 player_size = (normal_width, normal_height)
-                player_y = ground_y - normal_height
-            elif event.key == pygame.K_a and is_left:
-                is_left = False
-                player_size = (normal_width, normal_height)
-                player_y = ground_y - normal_height
-            elif event.key == pygame.K_d and is_right:
-                is_right = False
-                player_x -= 30
-                player_size = (normal_width, normal_height)
-                player_y = ground_y - normal_height
+            elif event.key == pygame.K_m:
+                show_overlay = not show_overlay 
 
-    # Update the paused text if the game is paused
-    if is_paused:
-        paused_text = font.render("Paused", True, (255, 0, 0))
+        # Update score
+        score += 1  
 
-
-    if not is_paused:
-        # Updtade score
-        score += 1
+        # Definition of the minimum range
+        minimum_range = [1500, 1800, 2000, 2500]
 
         # Gravity and player movement
         player_velocity += gravity
@@ -210,10 +227,25 @@ while run:
             player_y = ground_y - player_size[1]
             player_velocity = 0  # Reset velocity when touching the ground
 
-        # Obstacle movement and collision check
+        # Obstacle creation and update
+        if len(obstacles) == 0 or MIN_SCREEN_WIDTH - obstacles[-1]["x"] >= random.choice(minimum_range):
+            obstacle_type = random.choice([JUMP_OVER, DUCK_UNDER])
+            obstacle_color = DEFAULT_OBSTACLE_COLOR
+            if obstacle_type == DUCK_UNDER:
+                obstacle_color = DEFAULT_OBSTACLE_COLOR
+            new_obstacle = {
+                "x": MIN_SCREEN_WIDTH,
+                "type": obstacle_type,
+                "y": set_obstacle_position(obstacle_type),  # Use defined function
+                "color": obstacle_color,
+                "is_moving": False
+            }
+            obstacles.append(new_obstacle)
+
+        # Move obstacles
         for obstacle in obstacles:
             obstacle["x"] -= OBSTACLE_SPEED  # Move to the left
-            
+                    
             # Proximity check for "Duck Under"
             if obstacle["type"] == DUCK_UNDER and obstacle["x"] - player_x <= animation_trigger_distance:
                 obstacle["is_moving"] = True  # Trigger animation for duck under
@@ -229,67 +261,55 @@ while run:
 
             if player_rect.colliderect(obstacle_rect):  # Collision check
                 if obstacle["type"] == JUMP_OVER:
-                    if  score > high_score:
+                    if score > high_score:
                         high_score = score
-                        save_high_score(high_score)
+                    save_high_score(high_score)
                     score = 0
                     reset_game()  # Reset the game upon collision
                 elif obstacle["type"] == DUCK_UNDER:
                     if not is_ducking:  # Check if the player is not ducking
-                        if  score > high_score:
+                        if score > high_score:
                             high_score = score
                             save_high_score(high_score)
                         score = 0
                         reset_game()  # Reset the game upon collision
                 break
 
-        # Remove off-screen obstacles and add new ones
-        if obstacles and obstacles[0]["x"] < -OBSTACLE_WIDTH:
-            obstacles.pop(0)  # Remove off-screen obstacles
-            # Create a new obstacle
-            obstacle_type = random.choice([JUMP_OVER, DUCK_UNDER])
-            obstacle_color = DEFAULT_OBSTACLE_COLOR
-            if obstacle_type == DUCK_UNDER:
-                obstacle_color = DEFAULT_OBSTACLE_COLOR
-            new_obstacle = {
-                "x": random.randint(SCREEN_WIDTH, SCREEN_WIDTH + 300),
-                "type": obstacle_type,
-                "y": set_obstacle_position(obstacle_type),  # Use defined function
-                "color": obstacle_color,
-                "is_moving": False
-            }
-            obstacles.append(new_obstacle)
+    # Draw everything
+    screen.fill((0, 0, 0))
 
-    # Drawing
-    screen.fill((0, 0, 0))  # Clear the screen with black
-    pygame.draw.rect(screen, ground_color, (0, ground_y, SCREEN_WIDTH, SCREEN_WIDTH))
+    ui_manager.update(time_delta)
+    ui_manager.draw_ui(screen)
 
-    # Draw the player
-    pygame.draw.rect(screen, player_color, (player_x, player_y, player_size[0], player_size[1]))
+    if game_state == PLAYING:
+        # Drawing
+        pygame.draw.rect(screen, ground_color, (0, ground_y, ground_width, ground_height))  # Draw ground
 
-    # Draw obstacles
-    for obstacle in obstacles:
-        pygame.draw.rect(screen, obstacle["color"], (obstacle["x"], obstacle["y"], OBSTACLE_WIDTH, OBSTACLE_HEIGHT))
+        # Draw the player
+        pygame.draw.rect(screen, player_color, (player_x, player_y, player_size[0], player_size[1]))
 
-    # Draw the overlay if the flag is active
-    if show_overlay:
-        screen.blit(overlay_image, (0, 0))
+        # Draw obstacles
+        for obstacle in obstacles:
+            pygame.draw.rect(screen, obstacle["color"], (obstacle["x"], obstacle["y"], OBSTACLE_WIDTH, OBSTACLE_HEIGHT))
 
-    # Draw score
-    score_text = font.render(f"Score: {score}", True, (255, 230, 0))
-    screen.blit(score_text, (10, 10))
+        # Draw the overlay if the flag is active
+        if show_overlay:
+            screen.blit(overlay_image, (0, 0))
 
-    # Draw highscore
-    high_score_text = font.render(f"Highscore: {high_score}", True, (255, 255, 255))
-    screen.blit(high_score_text, (10, 40))
+        # Draw score
+        score_text = font.render(f"Score: {score}", True, (255, 230, 0))
+        screen.blit(score_text, (10, 10))
 
-    # Draw the paused text if the game is paused
-    if is_paused:
-        screen.blit(paused_text, ((SCREEN_WIDTH - paused_text.get_width()) // 2, (SCREEN_HEIGHT - paused_text.get_height()) // 2))
+        # Draw highscore
+        high_score_text = font.render(f"Highscore: {high_score}", True, (255, 255, 255))
+        screen.blit(high_score_text, (10, 40))
 
-    # Update the display and maintain the frame rate
-    pygame.display.flip()       
-    clock.tick(60)  # Maintain frame rate
+        # Draw the paused text if the game is paused
+        if is_paused:
+            paused_text = font.render("Paused", True, (255, 0, 0))
+            screen.blit(paused_text, ((MIN_SCREEN_WIDTH - paused_text.get_width()) // 2, (MIN_SCREEN_HEIGHT - paused_text.get_height()) // 2))
+
+    pygame.display.flip()
 
 pygame.quit()
 sys.exit()
