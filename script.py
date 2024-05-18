@@ -21,7 +21,7 @@ def toggle_fullscreen():
 
 # Background music
 music = pygame.mixer.music.load('song1.mp3')
-pygame.mixer.music.set_volume(0.5)
+pygame.mixer.music.set_volume(0.4)
 pygame.mixer.music.play(-1)
 
 # Sound effects
